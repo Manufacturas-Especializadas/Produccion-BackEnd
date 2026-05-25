@@ -82,21 +82,39 @@ namespace Application.Services
 
                 if (validChildren != null && validChildren.Any())
                 {
-                    decimal totalCycleTimeRaw = validChildren.Sum(c => c.TCiclo.Value);
+                    decimal totalCycleTimeRaw = validChildren.Sum(c => c.TCiclo!.Value);
                     decimal totalCycleTime = Math.Round(totalCycleTimeRaw);
-                    var bottleneckComponent = validChildren.OrderByDescending(c => c.TCiclo.Value).First();
-                    decimal piecesPerHour = bottleneckComponent.PzsHr.HasValue ? bottleneckComponent.PzsHr.Value : (3600m / bottleneckComponent.TCiclo.Value);
-                    decimal requiredHours = (demand.Quantity * totalCycleTime) / 3600m;
-                    decimal requiredOperators = requiredHours / ShiftHours;
 
-                    results.Add(new OperatorCalculationResultDto
+                    if (totalCycleTime > 0)
                     {
-                        PartNumber = demand.PartNumber,
-                        Process = bottleneckComponent.Operation ?? "Ensamble",
-                        PiecesPerHour = Math.Round(piecesPerHour, 2),
-                        RequiredHours = Math.Round(requiredHours, 2),
-                        RequiredOperators = Math.Round(requiredOperators, 2),
-                    });
+                        var bottleneckComponent = validChildren.OrderByDescending(c => c.TCiclo!.Value).First();
+
+                        decimal piecesPerHour = (3600m / totalCycleTime) * 0.8m;
+
+                        decimal requiredHours = demand.Quantity / piecesPerHour;
+
+                        decimal requiredOperators = requiredHours / ShiftHours;
+
+                        results.Add(new OperatorCalculationResultDto
+                        {
+                            PartNumber = demand.PartNumber,
+                            Process = bottleneckComponent.Operation ?? "Ensamble",
+                            PiecesPerHour = Math.Round(piecesPerHour, 2),
+                            RequiredHours = Math.Round(requiredHours, 2),
+                            RequiredOperators = Math.Round(requiredOperators, 2),
+                        });
+                    }
+                    else
+                    {
+                        results.Add(new OperatorCalculationResultDto
+                        {
+                            PartNumber = demand.PartNumber,
+                            Process = "Tiempo de ciclo sumado es 0",
+                            PiecesPerHour = 0,
+                            RequiredHours = 0,
+                            RequiredOperators = 0
+                        });
+                    }
                 }
                 else
                 {
