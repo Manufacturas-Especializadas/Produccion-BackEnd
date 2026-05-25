@@ -13,6 +13,13 @@ namespace Infrastructure.Persistence.Repositories
             _context = context;
         }
 
+        public async Task<IEnumerable<MasterIndustrial>> GetComponentsByParentAsync(string parentPartNumber)
+        {
+            return await _context.MasterIndustrials
+                    .Where(m => m.ParentPartNumber == parentPartNumber)
+                    .ToListAsync();
+        }
+
         public async Task<MasterIndustrial?> GetByPartNumberAsync(string partNumber)
         {
             return await _context.MasterIndustrials
