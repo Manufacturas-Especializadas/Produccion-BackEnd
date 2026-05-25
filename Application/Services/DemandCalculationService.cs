@@ -20,6 +20,11 @@ namespace Application.Services
             _demandPlanRepository = demandPlanRepository;
         }
 
+        public async Task<IEnumerable<string>> GetAvailableLinesAsync(DateTime date)
+        {
+            return await _demandPlanRepository.GetAvailableLinesByDateAsync(date);
+        }
+
         public async Task<IEnumerable<OperatorCalculationResultDto>> ProcessDemandAndCalculateOperatorsAsync(IEnumerable<DemandPlanDto> demandPlans, string lineName)
         {
             TimeZoneInfo mexicoTimezone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time (Mexico)");
