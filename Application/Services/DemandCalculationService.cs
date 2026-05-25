@@ -25,6 +25,26 @@ namespace Application.Services
             return await _demandPlanRepository.GetAvailableLinesByDateAsync(date);
         }
 
+        public async Task<IEnumerable<OperatorCalculationResultDto>> GetHistoricalCalculationAsync(DateTime date, string lineName)
+        {
+            var historicalData = await _demandPlanRepository.GetDemandByDateAndLineAsync(date, lineName);
+
+            if (!historicalData.Any()) return new List<OperatorCalculationResultDto>();
+
+            var demanDtos = historicalData.Select(h => new DemandPlanDto
+            {
+                PartNumber = h.PartNumber,
+                Quantity = h.Quantity,
+                ShopOrder = h.ShopOrder,
+                Model = h.Model,
+                Description = h.Description,
+                LineName = h.LineName,
+                ProductionDate = h.ProductionDate,
+            });
+
+            return await CalculateOperatorsCoreAsync(demanDtos);
+        }
+
         public async Task<IEnumerable<OperatorCalculationResultDto>> ProcessDemandAndCalculateOperatorsAsync(IEnumerable<DemandPlanDto> demandPlans, string lineName)
         {
             TimeZoneInfo mexicoTimezone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time (Mexico)");
