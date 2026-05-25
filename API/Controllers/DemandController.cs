@@ -20,6 +20,27 @@ namespace API.Controllers
             _demandCalculationService = demandCalculationService;
         }
 
+        [HttpGet("lines")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAvailableLines([FromQuery] DateTime date)
+        {
+            try
+            {
+                if (date == default) date = DateTime.Today;
+
+                var lines = await _demandCalculationService.GetAvailableLinesAsync(date);
+
+                return Ok(lines);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    $"Error: {ex.Message}"
+                );
+            }
+        }
+
         [HttpPost("upload")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
