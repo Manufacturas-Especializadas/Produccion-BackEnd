@@ -32,5 +32,23 @@ namespace Infrastructure.Persistence.Repositories
                     .Where(d => d.ProductionDate.Date == productionDate.Date)
                     .ToListAsync();
         }
+
+        public async Task<IEnumerable<DemandPlan>> GetDemandByDateAndLineAsync(DateTime date, string lineName)
+        {
+            return await _context.DemandPlans
+                        .Where(d => d.ProductionDate.Date == date.Date && d.LineName == lineName)
+                        .AsNoTracking()
+                        .ToListAsync();
+        }
+
+        public async Task<IEnumerable<string>> GetAvailableLinesByDateAsync(DateTime date)
+        {
+            return await _context.DemandPlans
+                    .Where(d => d.ProductionDate.Date == date.Date)
+                    .Select(d => d.LineName)
+                    .Distinct()
+                    .AsNoTracking()
+                    .ToListAsync();
+        }
     }
 }

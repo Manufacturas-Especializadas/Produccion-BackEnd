@@ -20,8 +20,36 @@ namespace Application.Services
             _demandPlanRepository = demandPlanRepository;
         }
 
+        public async Task<IEnumerable<string>> GetAvailableLinesAsync(DateTime date)
+        {
+            return await _demandPlanRepository.GetAvailableLinesByDateAsync(date);
+        }
+
+        public async Task<IEnumerable<OperatorCalculationResultDto>> GetHistoricalCalculationAsync(DateTime date, string lineName)
+        {
+            var historicalData = await _demandPlanRepository.GetDemandByDateAndLineAsync(date, lineName);
+
+            if (!historicalData.Any()) return new List<OperatorCalculationResultDto>();
+
+            var demanDtos = historicalData.Select(h => new DemandPlanDto
+            {
+                PartNumber = h.PartNumber,
+                Quantity = h.Quantity,
+                ShopOrder = h.ShopOrder,
+                Model = h.Model,
+                Description = h.Description,
+                LineName = h.LineName,
+                ProductionDate = h.ProductionDate,
+            });
+
+            return await CalculateOperatorsCoreAsync(demanDtos);
+        }
+
         public async Task<IEnumerable<OperatorCalculationResultDto>> ProcessDemandAndCalculateOperatorsAsync(IEnumerable<DemandPlanDto> demandPlans, string lineName)
         {
+            TimeZoneInfo mexicoTimezone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time (Mexico)");
+
+            DateTime nowInMexico = TimeZoneInfo.ConvertTime(DateTime.UtcNow, mexicoTimezone);
 
             var entitiesToSave = demandPlans.Select(dto => new DemandPlan
             {
@@ -30,55 +58,76 @@ namespace Application.Services
                 ShopOrder = dto.ShopOrder ?? string.Empty,
                 Model = dto.Model ?? string.Empty,
                 Description = dto.Description ?? string.Empty,
-                LineName = !string.IsNullOrEmpty(lineName) ? lineName : dto.LineName,
+                LineName = !string.IsNullOrWhiteSpace(lineName) ? lineName : dto.LineName,
                 ProductionDate = dto.ProductionDate,
-                UploadDate = DateTime.Now,
-            });
+                UploadDate = nowInMexico
+            }).ToList();
 
             if (entitiesToSave.Any())
             {
                 await _demandPlanRepository.AddRangeAsync(entitiesToSave);
             }
 
+            return await CalculateOperatorsCoreAsync(demandPlans);
+        }
+
+        private async Task<IEnumerable<OperatorCalculationResultDto>> CalculateOperatorsCoreAsync(IEnumerable<DemandPlanDto> demandPlans)
+        {
             var results = new List<OperatorCalculationResultDto>();
 
-            foreach(var demand in demandPlans)
+            foreach (var demand in demandPlans)
             {
-                var masterData = await _masterRepository.GetByPartNumberAsync(demand.PartNumber);
+                var childComponents = await _masterRepository.GetComponentsByParentAsync(demand.PartNumber);
+                var validChildren = childComponents?.Where(c => c.TCiclo.HasValue && c.TCiclo.Value > 0).ToList();
 
-                if(masterData != null && masterData.TCiclo.HasValue && masterData.TCiclo.Value > 0)
+                if (validChildren != null && validChildren.Any())
                 {
-                    decimal cycleTimeSeconds = masterData.TCiclo.Value;
-                    decimal requiredHours = (demand.Quantity * cycleTimeSeconds) / 3600m;
+                    decimal totalCycleTimeRaw = validChildren.Sum(c => c.TCiclo!.Value);
+                    decimal totalCycleTime = Math.Round(totalCycleTimeRaw);
 
-                    decimal requiredOperators = requiredHours / ShiftHours;
-
-                    decimal piecesPerHour = masterData.PzsHr.HasValue
-                            ? masterData.PzsHr.Value
-                            : (3600m / cycleTimeSeconds);
-
-                    results.Add(new OperatorCalculationResultDto
+                    if (totalCycleTime > 0)
                     {
-                        PartNumber = demand.PartNumber,
-                        Process = masterData.Operation ?? "N/A",
-                        PiecesPerHour = Math.Round(piecesPerHour, 2),
-                        RequiredHours = Math.Round(requiredHours, 2),
-                        RequiredOperators = Math.Round(requiredOperators, 2),
-                    });
+                        var bottleneckComponent = validChildren.OrderByDescending(c => c.TCiclo!.Value).First();
+
+                        decimal piecesPerHour = (3600m / totalCycleTime) * 0.8m;
+
+                        decimal requiredHours = demand.Quantity / piecesPerHour;
+
+                        decimal requiredOperators = requiredHours / ShiftHours;
+
+                        results.Add(new OperatorCalculationResultDto
+                        {
+                            PartNumber = demand.PartNumber,
+                            Process = bottleneckComponent.Operation ?? "Ensamble",
+                            PiecesPerHour = Math.Round(piecesPerHour, 2),
+                            RequiredHours = Math.Round(requiredHours, 2),
+                            RequiredOperators = Math.Round(requiredOperators, 2),
+                        });
+                    }
+                    else
+                    {
+                        results.Add(new OperatorCalculationResultDto
+                        {
+                            PartNumber = demand.PartNumber,
+                            Process = "Tiempo de ciclo sumado es 0",
+                            PiecesPerHour = 0,
+                            RequiredHours = 0,
+                            RequiredOperators = 0
+                        });
+                    }
                 }
                 else
                 {
                     results.Add(new OperatorCalculationResultDto
                     {
                         PartNumber = demand.PartNumber,
-                        Process = "Not Found / Missing Cycle Time",
+                        Process = "Faltan T. Ciclo / Sin Hijos",
                         PiecesPerHour = 0,
                         RequiredHours = 0,
                         RequiredOperators = 0
                     });
                 }
             }
-
             return results;
         }
     }

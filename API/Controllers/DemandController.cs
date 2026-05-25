@@ -20,6 +20,57 @@ namespace API.Controllers
             _demandCalculationService = demandCalculationService;
         }
 
+        [HttpGet("lines")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAvailableLines([FromQuery] DateTime date)
+        {
+            try
+            {
+                if (date == default) date = DateTime.Today;
+
+                var lines = await _demandCalculationService.GetAvailableLinesAsync(date);
+
+                return Ok(lines);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    $"Error: {ex.Message}"
+                );
+            }
+        }
+
+        [HttpGet("historical")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetHistoricalDemand([FromQuery] DateTime date, [FromQuery] string lineName)
+        {
+            try
+            {
+                if (date == default || string.IsNullOrWhiteSpace(lineName))
+                {
+                    return BadRequest("La fecha y la línea son requeridas");
+                }
+
+                var results = await _demandCalculationService.GetHistoricalCalculationAsync(date, lineName);
+
+                if (!results.Any())
+                {
+                    return NotFound("No se encontró programa de producción para esta fecha y línea");
+                }
+
+                return Ok(results);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    $"Error: {ex.Message}"
+                );
+            }
+        }
+
         [HttpPost("upload")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
