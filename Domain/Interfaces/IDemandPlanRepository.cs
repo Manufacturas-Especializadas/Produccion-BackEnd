@@ -8,6 +8,10 @@ namespace Domain.Interfaces
 
         Task<IEnumerable<DemandPlan>> GetByDateAsync(DateTime productionDate);
 
+        Task<IEnumerable<DemandPlan>> GetDemandByDateAndLineAsync(DateTime date, string lineName);
+
+        Task<IEnumerable<string>> GetAvailableLinesByDateAsync(DateTime date);
+
         Task AddRangeAsync(IEnumerable<DemandPlan> demandPlans);
     }
 }
