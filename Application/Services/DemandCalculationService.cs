@@ -22,6 +22,9 @@ namespace Application.Services
 
         public async Task<IEnumerable<OperatorCalculationResultDto>> ProcessDemandAndCalculateOperatorsAsync(IEnumerable<DemandPlanDto> demandPlans, string lineName)
         {
+            TimeZoneInfo mexicoTimezone = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time (Mexico)");
+
+            DateTime nowInMexico = TimeZoneInfo.ConvertTime(DateTime.UtcNow, mexicoTimezone);
 
             var entitiesToSave = demandPlans.Select(dto => new DemandPlan
             {
@@ -32,7 +35,7 @@ namespace Application.Services
                 Description = dto.Description ?? string.Empty,
                 LineName = !string.IsNullOrEmpty(lineName) ? lineName : dto.LineName,
                 ProductionDate = dto.ProductionDate,
-                UploadDate = DateTime.Now,
+                UploadDate = nowInMexico
             });
 
             if (entitiesToSave.Any())
@@ -44,23 +47,28 @@ namespace Application.Services
 
             foreach(var demand in demandPlans)
             {
-                var masterData = await _masterRepository.GetByPartNumberAsync(demand.PartNumber);
+                var childComponents = await _masterRepository.GetComponentsByParentAsync(demand.PartNumber);
 
-                if(masterData != null && masterData.TCiclo.HasValue && masterData.TCiclo.Value > 0)
+                var validChildren = childComponents?.Where(c => c.TCiclo.HasValue && c.TCiclo.Value > 0).ToList();
+
+                if (validChildren != null && validChildren.Any())
                 {
-                    decimal cycleTimeSeconds = masterData.TCiclo.Value;
-                    decimal requiredHours = (demand.Quantity * cycleTimeSeconds) / 3600m;
+                    decimal totalCycleTimeRaw = validChildren.Sum(c => c.TCiclo!.Value);
+                    decimal totalCycleTime = Math.Round(totalCycleTimeRaw);
 
+                    var bottleneckComponent = validChildren.OrderByDescending(c => c.TCiclo!.Value).First();
+
+                    decimal piecesPerHour = bottleneckComponent.PzsHr.HasValue
+                            ? bottleneckComponent.PzsHr.Value
+                            : (3600m / bottleneckComponent.TCiclo!.Value);
+
+                    decimal requiredHours = (demand.Quantity * totalCycleTime) / 3600m;
                     decimal requiredOperators = requiredHours / ShiftHours;
-
-                    decimal piecesPerHour = masterData.PzsHr.HasValue
-                            ? masterData.PzsHr.Value
-                            : (3600m / cycleTimeSeconds);
 
                     results.Add(new OperatorCalculationResultDto
                     {
                         PartNumber = demand.PartNumber,
-                        Process = masterData.Operation ?? "N/A",
+                        Process = bottleneckComponent.Operation ?? "Ensamble",
                         PiecesPerHour = Math.Round(piecesPerHour, 2),
                         RequiredHours = Math.Round(requiredHours, 2),
                         RequiredOperators = Math.Round(requiredOperators, 2),
@@ -71,7 +79,7 @@ namespace Application.Services
                     results.Add(new OperatorCalculationResultDto
                     {
                         PartNumber = demand.PartNumber,
-                        Process = "Not Found / Missing Cycle Time",
+                        Process = "Faltan T.Ciclo / Sin hijos",
                         PiecesPerHour = 0,
                         RequiredHours = 0,
                         RequiredOperators = 0
