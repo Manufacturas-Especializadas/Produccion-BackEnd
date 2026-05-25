@@ -41,6 +41,36 @@ namespace API.Controllers
             }
         }
 
+        [HttpGet("historical")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetHistoricalDemand([FromQuery] DateTime date, [FromQuery] string lineName)
+        {
+            try
+            {
+                if (date == default || string.IsNullOrWhiteSpace(lineName))
+                {
+                    return BadRequest("La fecha y la línea son requeridas");
+                }
+
+                var results = await _demandCalculationService.GetHistoricalCalculationAsync(date, lineName);
+
+                if (!results.Any())
+                {
+                    return NotFound("No se encontró programa de producción para esta fecha y línea");
+                }
+
+                return Ok(results);
+            }
+            catch(Exception ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    $"Error: {ex.Message}"
+                );
+            }
+        }
+
         [HttpPost("upload")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
